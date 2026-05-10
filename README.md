@@ -1,92 +1,85 @@
 # AXI4-Lite Slave Register Bank
 
 A synthesizable **AXI4-Lite slave** with 4 internal 32‑bit registers, implemented in Verilog.  
-Follows the ARM AMBA AXI4‑Lite protocol with independent read/write channels and full VALID/READY handshake.  
-Verified with a self‑checking testbench and waveform analysis.
+Follows the ARM AMBA AXI4‑Lite protocol with fully independent read/write channels, robust VALID/READY handshaking, and memory boundary protection. Verified with a self‑checking testbench and comprehensive waveform analysis.
 
 ---
 
 ## 📋 Features
-- 5 AXI4-Lite channels: AW, W, B, AR, R
-- 4 × 32‑bit internal registers (address decode via `addr[3:2]`)
-- 2‑state FSMs for write and read transactions
-- Fully compliant VALID/READY handshake
-- Synthesizable RTL (single clock domain, no behavioral delays)
-- Self‑checking testbench with PASS/FAIL
-- Waveform verification (GTKWave / EPWave)
+- **Full AXI4-Lite Compliance:** Implements all 5 independent channels (AW, W, B, AR, R).
+- **Independent Channel Latching:** The AW and W channels are fully decoupled, allowing Address and Data to arrive on different clock cycles without stalling the bus.
+- **Address Decoding & Protection:** Evaluates target addresses and returns a `DECERR` (2'b11) response code if the Master attempts an out-of-range memory access.
+- **Synthesizable RTL:** Strictly utilizes single-clock domain synchronous logic (no combinational loops or behavioral delays).
+- **Self‑Checking Testbench:** Automated Master emulation tasks with built-in PASS/FAIL logic.
 
 ---
 
 ## 🧱 Address Map
-| Register | Offset | `addr[3:2]` |
-|----------|--------|-------------|
-| reg0     | 0x00   | 00          |
-| reg1     | 0x04   | 01          |
-| reg2     | 0x08   | 10          |
-| reg3     | 0x0C   | 11          |
+| Register | Offset | `addr[3:2]` | Access |
+|----------|--------|-------------|--------|
+| reg0     | 0x00   | 00          | R/W    |
+| reg1     | 0x04   | 01          | R/W    |
+| reg2     | 0x08   | 10          | R/W    |
+| reg3     | 0x0C   | 11          | R/W    |
 
 ---
 
-## ⚙️ Design
+## ⚙️ Design Architecture
 
-### Write Transaction
-- Wait in `IDLE` until `AWVALID` and `WVALID` are both high.
-- Assert `AWREADY` and `WREADY`, write `WDATA` to `mem[AWADDR[3:2]]`.
-- Move to `RESP` state, assert `BVALID` with `BRESP = 00` (OKAY).
-- On `BREADY`, deassert `BVALID` and return to `IDLE`.
+### Write Transaction (Latch-Based FSM)
+- `AW` and `W` channels are monitored independently. `AWADDR` and `WDATA` are captured into internal latches the moment their respective `VALID` signals arrive.
+- Once *both* latches are full, the Slave performs an address boundary check.
+- If valid, data is written to `mem[AWADDR[3:2]]` and `BVALID` is asserted with `BRESP = 00` (OKAY).
+- If invalid, the write is blocked and `BRESP = 11` (DECERR) is returned.
 
 ### Read Transaction
-- Wait in `IDLE` for `ARVALID`.
-- Accept address (`ARREADY`), fetch data from `mem[ARADDR[3:2]]`.
-- Move to `DATA` state, assert `RVALID` with `RDATA`.
-- On `RREADY`, deassert `RVALID` and return to `IDLE`.
-
-Both FSMs run independently → simultaneous read/write allowed.
+- Waits in `IDLE` for `ARVALID`.
+- Accepts address (`ARREADY`) and immediately validates the boundary.
+- If valid, fetches data from `mem[ARADDR[3:2]]` and asserts `RVALID` with `RDATA` and `RRESP = 00`.
+- On `RREADY`, deasserts `RVALID` and returns to `IDLE`.
 
 ---
 
-## 🧪 Verification
+## 🧪 Verification & Waveforms
 
-**Testbench (`tb_axi_lite_slave.v`):**
-- Models a CPU master with `axi_write` and `axi_read` tasks.
-- Writes `0xDEADBEEF` to register 1 (address `0x04`).
-- Reads back and checks response codes (`BRESP`, `RRESP`) and data.
-- Prints **PASS** or **FAIL**.
+The testbench (`tb_axi_lite_slave.v`) models a CPU master verifying the "Happy Path" (valid reads/writes) and "Robustness" (illegal addresses). 
 
-**Waveform:**
-![Waveform](AXI_LITE.png)  
+### 1. Write Transaction
+Detailed view of the Write Channel handshakes, demonstrating the successful capture of Address (`0x04`) and Data (`0xDEADBEEF`), followed by the `OKAY` receipt.
+![Write Transaction](Writetransaction.png)  
 
+### 2. Read Transaction
+Detailed view of the Read Channel handshake, confirming successful data retrieval from the memory-mapped register.
+![Read Transaction](Readtransaction.png)  
 
-The waveform confirms correct handshake timing, data storage, and protocol compliance.
+### 3. Full System & Robustness Check
+Full simulation trace demonstrating overarching FSM stability. Note the final transaction where the Master attempts to write to an illegal address (`0xF0`), and the Slave correctly traps it by returning a `DECERR` (`11`) response.
+![Full Waveform](waveform.png)  
 
 ---
 
 ## 🔬 Simulation & Debugging
 Key RTL challenges resolved during development:
-1. **Race Conditions:** Non‑blocking assignments (`<=`) were used for all master‑driven stimuli to avoid the slave missing `VALID` pulses due to Verilog event ordering.
-2. **Phantom Handshakes:** The `W_RESP` and `R_DATA` states now explicitly force `AWREADY`/`WREADY` low, preventing the slave from accidentally accepting a new transaction while still responding.
-3. **Simulation Timeout:** A safety `initial` block with `#1000` timeout was used to break hangs, and test calls were placed immediately after reset to ensure they execute.
+1. **Independent Channel Race Conditions:** Initially, the FSM assumed `AW` and `W` signals would arrive simultaneously. This was re-architected into a robust latch-based system to handle asynchronous arrival times per the AXI specification.
+2. **Non-Blocking Overwrites:** Fixed a bug where `BVALID` and `RVALID` were being overwritten in the same clock cycle due to improper assignment logic, ensuring the `VALID`/`READY` handshake completes gracefully.
+3. **Simulation Timeout Freezes:** Abstracted the safety `#1000` timeout into an independent, concurrent `initial` block to prevent it from blocking sequential testbench tasks.
 
 ---
 
 ## 📁 Files
-- `axi_lite_slave.v` – RTL design
-- `tb_axi_lite_slave.v` – Testbench
-- `AXI_LITE.png` – Waveform evidence
-- `README.md` – This file
+- `/src/axi_lite_slave.v` – RTL design
+- `/tb/tb_axi_lite_slave.v` – Testbench
+- `/img/` – Waveform evidence
 
 ---
 
-## 🔮 Todo / Learning Path
-- Add `SLVERR` for out‑of‑range register addresses
-- Parameterize number of registers
-- Synthesize on FPGA (Vivado) and check area/timing
+## 🔮 Future Upgrades
+- Parameterize data width and register count.
+- Build a custom AXI4-Lite Master (Hardware Accelerator) to interface with this block.
+- Synthesize on FPGA (Xilinx Vivado) to extract area and timing reports.
 
 ---
 
-## 👤 Author
--Lakxmi priya A, EEE Undergrad at National Institute of Technology, Tiruchirappalli.
-
----
-
+## 👤 About the Author
+**Lakxmi Priya A.** Electrical and Electronics Engineering (EEE) Undergrad at National Institute of Technology (NIT), Tiruchirappalli.  
 *Built to demonstrate AXI4-Lite protocol understanding and RTL verification in a digital design portfolio.*
