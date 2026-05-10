@@ -1,17 +1,15 @@
 `timescale 1ns / 1ps
 
 module tb_axi_lite_slave;
-
-    // ---------- Global Signals ----------
     reg         ACLK;
     reg         ARESETn;
 
-    // ---------- Write Address Channel ----------
+    // Write Address Channel 
     reg  [31:0] AWADDR;
     reg         AWVALID;
     wire        AWREADY;
 
-    // ---------- Write Data Channel ----------
+    //  Write Data Channel 
     reg  [31:0] WDATA;
     reg         WVALID;
     wire        WREADY;
@@ -21,12 +19,12 @@ module tb_axi_lite_slave;
     wire        BVALID;
     reg         BREADY;
 
-    // ---------- Read Address Channel ----------
+    //Read Address Channel 
     reg  [31:0] ARADDR;
     reg         ARVALID;
     wire        ARREADY;
 
-    // ---------- Read Data Channel ----------
+    //Read Data Channel
     wire [31:0] RDATA;
     wire [1:0]  RRESP;
     wire        RVALID;
@@ -35,7 +33,7 @@ module tb_axi_lite_slave;
     // Internal testbench variable to catch read data
     reg  [31:0] rdata_catch;
 
-    // ---------- Instantiate the Slave ----------
+    // Instantiate the Slave 
     axi_lite_slave uut (
         .ACLK     (ACLK),
         .ARESETn  (ARESETn),
@@ -57,10 +55,10 @@ module tb_axi_lite_slave;
         .RREADY   (RREADY)
     );
 
-    // ---------- Clock Generator (100 MHz) ----------
+    //Clock Generator (100 MHz) 
     always #5 ACLK = ~ACLK;
 
-    // ---------- Main Test Sequence ----------
+    // Main Test Sequence 
     initial begin
         // Initialize all master signals
         ACLK    = 0;
@@ -84,10 +82,8 @@ module tb_axi_lite_slave;
         // Wait 2 more cycles for stability
         repeat(2) @(posedge ACLK);
 
-        // =========================================================
-        // TEST 1: The "Happy Path" (Write and Read from Address 0x04)
-        // =========================================================
-        $display("=== Starting Test 1: Valid Read/Write ===");
+        // TEST 1: Write and Read from Address 0x04
+        $display("Starting Test 1: Valid Read/Write");
 
         axi_write(32'h0000_0004, 32'hDEADBEEF);
         if (BRESP !== 2'b00) $display("FAIL: Expected OKAY (00), got %b", BRESP);
@@ -104,10 +100,8 @@ module tb_axi_lite_slave;
         // Wait a few cycles between tests
         repeat(5) @(posedge ACLK);
 
-        // =========================================================
-        // TEST 2: The "Robustness" Test (Write to Invalid Address 0xF0)
-        // =========================================================
-        $display("=== Starting Test 2: Invalid Address Check ===");
+        // TEST 2: Write to Invalid Address 0xF0
+        $display("Starting Test 2: Invalid Address Check");
         
         axi_write(32'h0000_00F0, 32'h11112222); 
         if (BRESP === 2'b11) begin
@@ -120,16 +114,14 @@ module tb_axi_lite_slave;
         $finish;
     end
 
-    // ---- Safety Timeout Block ----
+    // Safety Timeout Block
     initial begin
         #1000;
         $display("TIMEOUT: Simulation hung. Check your VALID/READY handshakes!");
         $finish;
     end
-
-    // =========================================================
+    
     // Master Emulation Tasks
-    // =========================================================
     task automatic axi_write(input [31:0] addr, input [31:0] data);
     begin
         @(posedge ACLK);
