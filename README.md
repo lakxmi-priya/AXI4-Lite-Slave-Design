@@ -53,8 +53,8 @@ Detailed view of the Read Channel handshake, confirming successful data retrieva
 ![Read Transaction](Readtransaction.png)  
 
 ### 3. Full System & Robustness Check
-Full simulation trace demonstrating overarching FSM stability. Note the final transaction where the Master attempts to write to an illegal address (`0xF0`), and the Slave correctly traps it by returning a `DECERR` (`11`) response.
-![waveform ](waveform.png)  
+Full simulation trace demonstrating overarching FSM stability..
+![Waveform](Waveform.png)
 
 ---
 
